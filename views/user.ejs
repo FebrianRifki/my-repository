@@ -1,0 +1,38 @@
+<html>
+<%- include('header'); %>
+  <!-- Main content -->
+  <section class="content">
+        <div class="container-fluid">
+            <div class="card">
+                <div class="card-body">   
+                    <table class="table table-bordered">
+                        <thead align="center">
+                                <th>ID</th>
+                                <th>Employee ID</th> 
+                                <th>User Type</th>
+                                <th>Username</th> 
+                                <th>Password</th>
+                                <th>Action</th>
+                        </thead>
+                        <tbody align="center">
+                                <% data.forEach(function (datatable) { %>
+                                    <tr>
+                                         <td><%= datatable.id %></td>
+                                         <td><%= datatable.employee_id %></td>
+                                         <td><%= datatable.user_type %></td>
+                                         <td><%= datatable.username %></td>
+                                         <td><%= datatable.password %></td>
+                                         <td><button type="button" class="btn bg-gradient-info btn-sm">Edit</button>
+                                            <button type="button" class="btn bg-gradient-danger btn-sm">Delete</button>
+                                        </td>
+                                     </tr>                              
+                                <% }) %>
+                        </tbody>   
+                    </table>
+                </div>
+            </div>
+      </section>
+      <!-- /.content -->
+    </div>
+<%- include('footer'); %>
+</html>

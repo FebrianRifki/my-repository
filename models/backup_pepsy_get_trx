@@ -1,0 +1,278 @@
+class PepsyModel
+
+  def self.get_transaction(buss_mod: nil, date_time_to: nil, limit: 15, business_channel: nil, order_ids: [])
+    airline_without_ticket_no = []
+    airline_without_ticket_no << Katrina::Flight::FlightTcfgPreference.get_cache("airline_without_tix_no")["pref_value"]
+    if order_ids.blank?
+      order_ids = get_order_trx(buss_mod: buss_mod, date_time_to: date_time_to, limit: limit, business_channel: business_channel, airline_without_ticket_no: airline_without_ticket_no)
+    else
+      order_ids = get_order_trx_by_order(buss_mod: buss_mod, business_channel: business_channel, order_ids: order_ids, airline_without_ticket_no: airline_without_ticket_no )
+    end
+    return [] if order_ids.blank?
+    sql_result = KatrinaBase.connection.exec_query("select
+              order_no, DATE_FORMAT(DateOfCreated,'%Y-%m-%d %H:%i:%s') AS DateOfCreated, DATE_FORMAT(sys_timestamp,'%Y-%m-%d %H:%i:%s') AS sys_timestamp, Divisi, AirlinePNR,
+              BookingStatus, BusinessModel, DETAILID, PCID,
+              book_pax, pax_info, journey, BOOKINGID as book_pnr_id,
+              JSON_OBJECT(
+              'BOOKINGID',SalesFolder.BOOKINGID,
+              'PAXTOTALCOUNT',SalesFolder.PAXTOTALCOUNT,
+              'PAXCHDCOUNT',SalesFolder.PAXCHDCOUNT,
+              'PAXADTCOUNT',SalesFolder.PAXADTCOUNT,
+              'PAXINFCOUNT',SalesFolder.PAXINFCOUNT,
+              'PNRGID', SalesFolder.PNRGID,
+              'DETAILID',SalesFolder.DETAILID,
+              'AirlinePNR',SalesFolder.AirlinePNR,
+              'EmployeeID',SalesFolder.EmployeeID,
+              'EmployeeName',SalesFolder.EmployeeName,
+              'Divisi',SalesFolder.Divisi,
+              'PCID',SalesFolder.PCID,
+              'DateOfCreated',SalesFolder.DateOfCreated,
+              'TimeLimit',SalesFolder.TimeLimit,
+              'BookerName',SalesFolder.BookerName,
+              'BookerPhone',SalesFolder.BookerPhone,
+              'BookerMobilePhone',SalesFolder.BookerMobilePhone,
+              'VendorSystemCode',SalesFolder.VendorSystemCode,
+              'JourneyKey',SalesFolder.JourneyKey,
+              'BaseAdditionalPricing',SalesFolder.BaseAdditionalPricing,
+              'SalesFolderDetails1',SalesFolder.SalesFolderDetails1,
+              'SalesFolderDetails2',SalesFolder.SalesFolderDetails2
+              ) as JsonSalesFolder
+              from (
+              select flight_tran_order_book_pnr.book_pnr_id as BOOKINGID,
+              flight_tran_order_book_pnr.book_pnr_spl_pnr_id as SPLPNRID,
+              flight_tran_order.flight_order_no as order_no,
+              flight_tran_order.flight_order_business_model_type_code as BusinessModel,
+              flight_tran_order.flight_order_no as PNRGID,
+              (flight_tran_order.flight_order_pax_chd + flight_tran_order.flight_order_pax_adt + flight_tran_order.flight_order_pax_inf) as PAXTOTALCOUNT,
+              flight_tran_order.flight_order_pax_chd as PAXCHDCOUNT,
+              flight_tran_order.flight_order_pax_adt as PAXADTCOUNT,
+              flight_tran_order.flight_order_pax_inf as PAXINFCOUNT,
+              flight_tran_order_book_pnr.sys_timestamp as sys_timestamp,
+              flight_tran_order_book_pnr.book_pnr_related_key_1 as DETAILID,
+              flight_tran_order_book_pnr.book_pnr_spl_book_code as AirlinePNR,
+              flight_tran_order_book_pnr.book_pnr_spl_currency_code as Currency,
+              flight_tran_order_book_pnr.book_pnr_vendor_system_code as VendorSystemCode,
+              org_tran_org_employee.org_emp_number as EmployeeID,
+              org_tran_org_employee.org_emp_fullname as EmployeeName,
+              agent_tmst_agent.agent_alias as Divisi,
+              flight_tran_order.flight_order_id as orderId,
+              CONCAT('TX',substring(mdm_flight_tref_flight_scope.flight_scope_code,1,1)) as PCID,
+              flight_tran_order_book_pnr.book_pnr_booking_status_code as BookingStatus,
+              flight_tran_order_book_pnr.book_pnr_issued_timestamp as DateOfCreated,
+              flight_tran_order_book_pnr.book_pnr_spl_limit_timestamp as TimeLimit,
+              CONCAT(flight_tran_order_contact.order_contact_title_code,' ',flight_tran_order_contact.order_contact_first_name,' ',flight_tran_order_contact.order_contact_last_name) as BookerName,
+              flight_tran_order_contact.order_contact_phone_home as BookerPhone,
+              flight_tran_order_contact.order_contact_phone_mobile as BookerMobilePhone,
+              flight_tran_order_book_pnr.book_pnr_journey_key as JourneyKey,
+              flight_tran_order_book_pnr.book_pnr_new_journey_key as NewJourneyKey,
+              JSON_OBJECT(
+                'ServiceFee', flight_tran_order_book_pnr.book_pnr_total_service_fee,
+                'Disc', flight_tran_order_book_pnr.book_pnr_total_discount,
+                'Round', flight_tran_order_book_pnr.book_pnr_total_round,
+                'MarkUp', flight_tran_order_book_pnr.book_pnr_total_markup
+              ) as BaseAdditionalPricing,
+              (select CAST(CONCAT('[',
+                              GROUP_CONCAT(
+                                  JSON_OBJECT(
+                                    'AirlinePNR',AirlinePNR,
+                                    'PaxName', CONCAT(flight_tran_order_pnr_pax.pnr_pax_last_name,'/ ',flight_tran_order_pnr_pax.pnr_pax_first_name,' ',REPLACE(flight_tran_order_pnr_pax.pnr_pax_customer_title_code,'.','')),
+                                    'PaxNumber', flight_tran_order_pnr_pax.pnr_pax_name_number,
+                                    'Type',flight_tran_order_pnr_pax.pnr_pax_pax_type_code,
+                                    'TixNo',REPLACE(REPLACE(flight_tran_order_pnr_pax_detail.pax_detail_ticket_number,',','/'),'-','/'),
+                                    'Currency', Currency
+                                  )
+                              ),
+                           ']')
+                       AS JSON)
+                from flight_tran_order_pnr_pax join flight_tran_order_pnr
+                on flight_tran_order_pnr.order_pnr_id = flight_tran_order_pnr_pax.pnr_pax_order_pnr_id
+                left join flight_tran_order_pnr_pax_detail
+                on flight_tran_order_pnr_pax.pnr_pax_id = flight_tran_order_pnr_pax_detail.pax_detail_order_pnr_pax_id
+                AND flight_tran_order_pnr_pax_detail.pax_detail_ticket_number not in ('N/A','dummy', '', ' ')
+                AND pax_detail_ticket_number IS NOT NULL 
+                WHERE flight_tran_order_pnr.order_pnr_spl_pnr_id = SPLPNRID
+              ) as SalesFolderDetails1,
+              (select CAST(CONCAT('[',
+                              GROUP_CONCAT(
+                                  JSON_OBJECT(
+                                    'AirlinePNR',AirlinePNR,
+                                    'PaxName', CONCAT(flight_tran_order_pax.order_pax_last_name,'/ ',flight_tran_order_pax.order_pax_first_name,' ',REPLACE(flight_tran_order_pax.order_pax_title_code,'.','')),
+                                    'PaxNumber', flight_tran_order_pax.order_pax_name_number,
+                                    'Type',flight_tran_order_pax.order_pax_type_code,
+                                    'TixNo',null,
+                                    'Currency', Currency
+                                  )
+                              ),
+                           ']')
+                       AS JSON)
+                from flight_tran_order_pax join flight_tran_order
+                on flight_tran_order_pax.order_pax_order_id = flight_tran_order.flight_order_id
+                WHERE flight_tran_order.flight_order_no = PNRGID
+              ) as SalesFolderDetails2,
+              (select
+                          CONCAT('[',
+                              GROUP_CONCAT(
+                                  JSON_OBJECT(
+                                    'book_pax_type_code', book_pax.book_pax_type_code,
+                                    'book_pax_authentic_pax_type_id', book_pax.book_pax_authentic_pax_type_id,
+                                    'book_pax_authentic_pax_type_code', book_pax.book_pax_authentic_pax_type_code,
+                                    'book_pax_name_number', book_pax.book_pax_name_number,
+                                    'book_pax_title_id', book_pax.book_pax_title_id,
+                                    'book_pax_title_code', book_pax.book_pax_title_code,
+                                    'book_pax_title_name', book_pax.book_pax_title_name,
+                                    'book_pax_first_name', book_pax.book_pax_first_name,
+                                    'book_pax_last_name', book_pax.book_pax_last_name,
+                                    'book_pax_full_nam', book_pax.book_pax_full_name
+                                  )
+                              ),
+                           ']')
+                FROM flight_tran_order_book_pax book_pax WHERE flight_tran_order_book_pnr.book_pnr_id = book_pax.book_pax_book_pnr_id
+                AND book_pax.book_pax_is_active = 1 AND book_pax.sys_soft_delete = 0
+              ) as book_pax,
+              (SELECT SUM(ftobj.book_journey_journey_type_id)
+                FROM flight_tran_order_book_journey ftobj
+                WHERE ftobj.book_journey_bookpnr_id = flight_tran_order_book_pnr.book_pnr_id
+                GROUP BY ftobj.book_journey_bookpnr_id) AS journey,
+              (SELECT
+                  CONCAT('[',
+                    GROUP_CONCAT(
+                      JSON_OBJECT(
+                        'name_number', ftop.order_pax_name_number,
+                        'full_name', ftop.order_pax_full_name,
+                        'info_remark', ftopi.info_remark,
+                        'info_highest_fare_departure', ftopi.info_highest_fare_departure,
+                        'info_lowest_fare_departure', ftopi.info_lowest_fare_departure,
+                        'info_highest_fare_return', ftopi.info_highest_fare_return,
+                        'info_lowest_fare_return', ftopi.info_lowest_fare_return
+                      )
+                    ),
+                    ']'
+                  )
+                FROM flight_tran_order_pax ftop
+                LEFT JOIN flight_tran_order_pax_info ftopi ON ftop.order_pax_id = ftopi.info_pax_id
+                WHERE flight_tran_order.flight_order_id = ftop.order_pax_order_id
+              ) AS pax_info
+              FROM
+              flight_tran_order_book_pnr
+              JOIN flight_tran_order ON flight_tran_order_book_pnr.book_pnr_order_id = flight_tran_order.flight_order_id
+              JOIN org_tran_org_employee on flight_tran_order_book_pnr.sys_entry_user = org_tran_org_employee.org_emp_username
+              JOIN agent_tmst_agent on flight_tran_order_book_pnr.book_pnr_agent_id = agent_tmst_agent.agent_id
+              JOIN mdm_flight_tref_flight_scope ON flight_tran_order_book_pnr.book_pnr_flight_scope_id = mdm_flight_tref_flight_scope.flight_scope_id
+              JOIN flight_tran_order_contact ON flight_tran_order.flight_order_id = flight_tran_order_contact.order_contact_order_id
+              JOIN flight_tref_order_status ON flight_tran_order_book_pnr.book_pnr_order_status_id = flight_tref_order_status.flight_order_status_id
+              where flight_tran_order.flight_order_id IN (#{order_ids.join(',')})
+              AND flight_tref_order_status.flight_order_status_code = 'ISSUED'
+              AND flight_tran_order_book_pnr.sys_soft_delete = 0 
+              AND flight_tran_order_book_pnr.book_pnr_related_key_1 IS NOT NULL 
+              AND (flight_tran_order_book_pnr.book_pnr_related_key_2 IS NULL 
+                OR flight_tran_order_book_pnr.book_pnr_related_key_2 = 'DELETED')
+              )as SalesFolder ORDER BY sys_timestamp")
+    return sql_result
+  end
+
+  def self.get_order_trx(buss_mod: nil, date_time_to: nil, limit: 15, business_channel: nil, airline_without_ticket_no: [])
+    orders_sql = Katrina::Flight::FlightTranOrder
+                     .select("flight_order_id, 
+                      GROUP_CONCAT(booking_status) AS booking_status, GROUP_CONCAT(is_valid) AS is_valid, 
+                      GROUP_CONCAT(org_emp_id) AS org_emp_id, MAX(sys_timestamp) AS sys_timestamp
+                      from(
+                      select flight_tran_order.`flight_order_id`,
+                      book_segment.`book_segment_airline_iata_code` as airline_code,
+                      if(pnr.`book_pnr_vendor_system_code` not in ('#{airline_without_ticket_no.join(',')}')
+                      and ( group_concat(if(pnr_pax_detail.pax_detail_ticket_number = '',
+                      null ,
+                      pnr_pax_detail.pax_detail_ticket_number)) is null
+                      or group_concat(if(pnr_pax_detail.pax_detail_ticket_number = '',
+                      null,
+                      pnr_pax_detail.pax_detail_ticket_number)) = '' ),
+                      0,
+                      1) as is_valid,
+                      group_concat(if(pnr_pax_detail.pax_detail_ticket_number = '',
+                      null,
+                      pnr_pax_detail.pax_detail_ticket_number)) as ticket_number,
+                      group_concat(pnr.`book_pnr_booking_status_code`) as booking_status,
+                      group_concat(org_emp.org_emp_id) as org_emp_id,
+                      max(pnr.`sys_timestamp`) as sys_timestamp")
+                     .joins("JOIN `flight_tran_order_book_pnr` pnr ON flight_tran_order.`flight_order_id` = pnr.`book_pnr_order_id` AND pnr.`book_pnr_is_active` = 1
+                              AND pnr.book_pnr_related_key_1 IS NOT NULL AND (pnr.book_pnr_related_key_2 IS NULL OR pnr.book_pnr_related_key_2 = 'DELETED')")
+                     .joins("LEFT JOIN org_tran_org_employee org_emp ON pnr.sys_entry_user = org_emp.org_emp_username")
+                     .joins("LEFT JOIN `flight_tran_order_pnr` order_pnr ON pnr.`book_pnr_spl_pnr_id` = order_pnr.`order_pnr_spl_pnr_id`")
+                     .joins("LEFT JOIN `flight_tran_order_book_journey` book_journey on pnr.`book_pnr_id` = book_journey.`book_journey_bookpnr_id`")
+                     .joins("LEFT JOIN `flight_tran_order_book_segment` book_segment on book_journey.`book_journey_id` = book_segment.`book_segment_book_journey_id`")
+                     .joins("LEFT JOIN `flight_tran_order_pnr_pax_detail` pnr_pax_detail on order_pnr.`order_pnr_id` = pnr_pax_detail.`pax_detail_order_pnr_id`")
+                     .joins("LEFT JOIN prd_tref_business_channel_type channel_type on `flight_tran_order`.`flight_order_business_channel_type_id` = channel_type.buschan_type_id")
+                     .joins("LEFT JOIN `agent_tmst_agent` agent on flight_tran_order.`flight_order_agent_id` = agent.`agent_id`")
+                     .group("pnr.book_pnr_id, book_segment.`book_segment_id`, flight_tran_order.`flight_order_id`)r1 GROUP BY flight_order_id")
+                     .where("flight_tran_order.flight_order_business_model_type_code = :buss_mod
+                              AND channel_type.buschan_type_code = :business_channel",
+                            {buss_mod: buss_mod, business_channel: business_channel})
+                     .to_sql
+    orders = "SELECT flight_order_id FROM("
+    orders += orders_sql
+    orders += ") result WHERE sys_timestamp >= STR_TO_DATE('" + date_time_to.strftime('%Y%m%d%H%M%S') + "','%Y%m%d%H%i%s')
+              AND sys_timestamp < TIMESTAMP(DATE_SUB(NOW(), INTERVAL 3 MINUTE))
+              AND ( booking_status not like '%BOOKED%'
+              AND booking_status not like '%ISSUING_PROCESS%')
+              AND booking_status like '%ISSUED%'
+              AND is_valid not like '%0%'
+              AND org_emp_id is not null
+              ORDER BY sys_timestamp ASC
+              LIMIT #{limit.to_i}"
+    byebug
+    result = Katrina::Flight::FlightTranOrder.connection.exec_query(orders)
+    return result.map { |item| item['flight_order_id'] }
+  end
+
+  def self.get_order_trx_by_order(buss_mod: nil, business_channel: nil, order_ids: [], airline_without_ticket_no: [])
+    orders_sql = Katrina::Flight::FlightTranOrder
+                     .select("flight_order_id, 
+                      GROUP_CONCAT(booking_status) AS booking_status, GROUP_CONCAT(is_valid) AS is_valid, 
+                      GROUP_CONCAT(org_emp_id) AS org_emp_id, MAX(sys_timestamp) AS sys_timestamp
+                      from(
+                      select flight_tran_order.`flight_order_id`,
+                      book_segment.`book_segment_airline_iata_code` as airline_code,
+                      if(pnr.`book_pnr_vendor_system_code` not in ('#{airline_without_ticket_no.join(',')}')
+                      and ( group_concat(if(pnr_pax_detail.pax_detail_ticket_number = '',
+                      null ,
+                      pnr_pax_detail.pax_detail_ticket_number)) is null
+                      or group_concat(if(pnr_pax_detail.pax_detail_ticket_number = '',
+                      null,
+                      pnr_pax_detail.pax_detail_ticket_number)) = '' ),
+                      0,
+                      1) as is_valid,
+                      group_concat(if(pnr_pax_detail.pax_detail_ticket_number = '',
+                      null,
+                      pnr_pax_detail.pax_detail_ticket_number)) as ticket_number,
+                      group_concat(pnr.`book_pnr_booking_status_code`) as booking_status,
+                      group_concat(org_emp.org_emp_id) as org_emp_id,
+                      max(pnr.`sys_timestamp`) as sys_timestamp")
+                     .joins("JOIN `flight_tran_order_book_pnr` pnr ON flight_tran_order.`flight_order_id` = pnr.`book_pnr_order_id` AND pnr.`book_pnr_is_active` = 1
+                              AND pnr.book_pnr_related_key_1 IS NOT NULL AND (pnr.book_pnr_related_key_2 IS NULL OR pnr.book_pnr_related_key_2 = 'DELETED')")
+                     .joins("LEFT JOIN org_tran_org_employee org_emp ON pnr.sys_entry_user = org_emp.org_emp_username")
+                     .joins("LEFT JOIN `flight_tran_order_pnr` order_pnr ON pnr.`book_pnr_spl_pnr_id` = order_pnr.`order_pnr_spl_pnr_id`")
+                     .joins("LEFT JOIN `flight_tran_order_book_journey` book_journey on pnr.`book_pnr_id` = book_journey.`book_journey_bookpnr_id`")
+                     .joins("LEFT JOIN `flight_tran_order_book_segment` book_segment on book_journey.`book_journey_id` = book_segment.`book_segment_book_journey_id`")
+                     .joins("LEFT JOIN `flight_tran_order_pnr_pax_detail` pnr_pax_detail on order_pnr.`order_pnr_id` = pnr_pax_detail.`pax_detail_order_pnr_id`")
+                     .joins("LEFT JOIN prd_tref_business_channel_type channel_type on `flight_tran_order`.`flight_order_business_channel_type_id` = channel_type.buschan_type_id")
+                     .joins("LEFT JOIN `agent_tmst_agent` agent on flight_tran_order.`flight_order_agent_id` = agent.`agent_id`")
+                     .group("pnr.book_pnr_id, book_segment.`book_segment_id`, flight_tran_order.`flight_order_id`)r1 GROUP BY flight_order_id")
+                     .where("flight_tran_order.flight_order_business_model_type_code = :buss_mod
+                              AND channel_type.buschan_type_code = :business_channel
+                              AND flight_tran_order.flight_order_no IN(:order_ids)",
+                            {buss_mod: buss_mod, business_channel: business_channel, order_ids: order_ids})
+                     .to_sql
+    orders = "SELECT flight_order_id FROM("
+    orders += orders_sql
+    orders += ") result WHERE sys_timestamp < TIMESTAMP(DATE_SUB(NOW(), INTERVAL 3 MINUTE))
+              AND ( booking_status not like '%BOOKED%'
+              AND booking_status not like '%ISSUING_PROCESS%')
+              AND booking_status like '%ISSUED%'
+              AND is_valid not like '%0%'
+              AND org_emp_id is not NULL
+              ORDER BY sys_timestamp ASC"
+    result = Katrina::Flight::FlightTranOrder.connection.exec_query(orders)
+    return result.map {|item| item['flight_order_id']}
+  end
+  
+
+end
